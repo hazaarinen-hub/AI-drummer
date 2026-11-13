@@ -1,1 +1,87 @@
 
+name: Build AI Drummer APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: false
+          packages: platform-tools
+
+      - name: Accept Android licenses
+        run: |
+          for i in {1..20}; do echo y; done | sdkmanager --licenses
+
+      - name: Install Android SDK
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extract project
+        run: |
+          mkdir project
+          unzip -q AI-Drummer-Android-project.zip -d project
+
+      - name: Fix JVM compatibility
+        shell: bash
+        run: |
+          APP_GRADLE=$(find project -path '*/app/build.gradle.kts' -print -quit)
+          if [ -z "$APP_GRADLE" ]; then
+            echo "app/build.gradle.kts not found"
+            exit 1
+          fi
+          python3 - "$APP_GRADLE" <<'PY'
+          import pathlib, re, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+          pattern = r'(?m)^(\s*)buildFeatures\s*\{\s*compose\s*=\s*true\s*\}'
+          replacement = '''\\1buildFeatures { compose = true }
+          \\1compileOptions {
+          \\1    sourceCompatibility = JavaVersion.VERSION_17
+          \\1    targetCompatibility = JavaVersion.VERSION_17
+          \\1}
+          \\1kotlinOptions {
+          \\1    jvmTarget = "17"
+          \\1}'''
+          s, count = re.subn(pattern, replacement, s, count=1)
+          if count != 1:
+              raise SystemExit("Could not find buildFeatures block")
+          p.write_text(s)
+          print("Java and Kotlin targets set to 17")
+          PY
+
+      - name: Build APK
+        shell: bash
+        run: |
+          PROJECT_DIR=$(dirname "$(find project -name settings.gradle.kts | head -n 1)")
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Drummer-APK
+          path: project/**/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
