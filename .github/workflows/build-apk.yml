@@ -41,7 +41,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir project
-          unzip -q AI-Drummer-Android-project-v0.2.zip -d project
+          unzip -q AI-Drummer-Android-project-v0.3.zip -d project
 
       - name: Fix JVM compatibility
         shell: bash
